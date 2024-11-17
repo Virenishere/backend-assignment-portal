@@ -190,6 +190,12 @@ All data is stored in MongoDB Cloud. The necessary credentials are already confi
 
 If you're planning to integrate this API with a frontend application, make sure that the **JWT token** is stored in the **cookie** for automatic login, or manually add it to the request header in Postman for testing.
 
+---
+
+### Support
+If you're facing any issues or have questions, feel free to reach out via email at [virender288@gmail.com](mailto:virender288@gmail.com).
+
+---
 
 
 
