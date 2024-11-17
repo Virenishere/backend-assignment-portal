@@ -8,6 +8,14 @@ const { JWT_USER_PASSWORD } = require("../jwt/config.js");
 const registerUser = async (req, res) => {
   const { firstName, lastName, email, password } = req.body;
 
+  // Check if all required fields are provided
+  if (!firstName || !lastName || !email || !password) {
+    return res.status(400).json({
+      message:
+        "Please enter all required details: firstName, lastName, email, and password",
+    });
+  }
+
   const requiredBody = z.object({
     firstName: z.string().min(3).max(100),
     lastName: z.string().min(3).max(100),
@@ -42,8 +50,6 @@ const registerUser = async (req, res) => {
       email,
       password: hashedPassword,
     });
-
-    // Send success response
     res.json({
       message: "You are registered",
     });
@@ -56,6 +62,13 @@ const registerUser = async (req, res) => {
 // Login User Controller
 const loginUser = async (req, res) => {
   const { email, password } = req.body;
+
+  // Check if all required fields are provided
+  if (!email || !password) {
+    return res.status(400).json({
+      message: "Please enter all required details: email, and password",
+    });
+  }
 
   try {
     const user = await userModel.findOne({ email });
@@ -70,15 +83,13 @@ const loginUser = async (req, res) => {
 
     if (passwordMatch) {
       // Generate a JWT token with the user's id from DB
-      const token = jwt.sign(
-        { id: user._id },
-        JWT_USER_PASSWORD, // secret key to sign the JWT
-        { expiresIn: "1h" } // login with expiry after 1 hr
-      );
+      const token = jwt.sign({ id: user._id }, JWT_USER_PASSWORD, {
+        expiresIn: "1h",
+      });
 
       res.status(200).json({
         message: "Login successful",
-        token, // send the JWT token in the response
+        token,
       });
     } else {
       res.status(403).json({
@@ -98,38 +109,53 @@ const uploadAssignment = async (req, res) => {
   try {
     const { task, admin, userId } = req.body;
 
-    // Check if user exists
-    const user = await userModel.findById(userId);
+    // Check if user exists by firstName and lastName
+    const user = await userModel.findOne({
+      firstName: userId.split(" ")[0],
+      lastName: userId.split(" ")[1],
+    });
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }
 
-    // Check if admin exists
-    const adminUser = await adminModel.findById(admin);
+    // Check if admin exists by firstName and lastName
+    const adminUser = await adminModel.findOne({
+      firstName: admin.split(" ")[0],
+      lastName: admin.split(" ")[1],
+    });
     if (!adminUser) {
       return res.status(404).json({ msg: "Admin not found" });
     }
 
     // Create the assignment
     const assignment = new assignmentModel({
-      userId,
+      userId: user._id,
       task,
-      admin,
+      admin: adminUser._id,
+      status: "pending",
     });
 
     // Save the assignment
     await assignment.save();
 
-    // Populate userId to include the firstName of the user and admin name
+    // Populate userId and admin fields
     const populatedAssignment = await assignmentModel
       .findById(assignment._id)
-      .populate('userId', 'firstName')
-      .populate('admin', 'name');
+      .populate("userId", "firstName lastName")
+      .populate("admin", "firstName lastName")
+      .select("task status userId admin");
 
-    // Send the response
+    // Create a new object with only the required fields
+    const transformedAssignment = {
+      userId: populatedAssignment.userId._id,
+      name: `${populatedAssignment.userId.firstName} ${populatedAssignment.userId.lastName}`,
+      admin: populatedAssignment.admin._id,
+      task: populatedAssignment.task,
+      status: populatedAssignment.status,
+    };
     res.status(200).json({
       msg: "Assignment uploaded successfully",
-      assignment: populatedAssignment,
+      assignment: transformedAssignment,
     });
   } catch (error) {
     console.error("Error uploading assignment:", error);
@@ -140,8 +166,14 @@ const uploadAssignment = async (req, res) => {
 // Get Admins Controller
 const getAdmins = async (req, res) => {
   try {
-    const admins = await adminModel.find();
-    res.status(200).json(admins); // send admins as response
+    const admins = await adminModel.find({}, "firstName lastName _id");
+
+    const formattedAdmins = admins.map((admin) => ({
+      userId: admin._id,
+      name: `${admin.firstName} ${admin.lastName}`,
+    }));
+
+    res.status(200).json(formattedAdmins);
   } catch (error) {
     console.error("Error fetching admins:", error);
     res.status(500).json({

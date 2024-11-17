@@ -17,10 +17,8 @@ function userMiddleware(req, res, next) {
         // Verify the user token
         const decoded = jwt.verify(token, JWT_USER_PASSWORD);
 
-        // Attach user information to the request object
         req.userId = decoded.id;
-
-        next(); // Proceed to the next middleware or route
+        next(); 
     } catch (error) {
         return res.status(403).json({ message: "Invalid or expired user token" });
     }

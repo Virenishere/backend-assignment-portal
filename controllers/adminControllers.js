@@ -1,6 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const {z} = require("zod");
+const { z } = require("zod");
 const { adminModel, assignmentModel } = require("../db/db.js");
 const { JWT_ADMIN_PASSWORD } = require("../jwt/config.js");
 
@@ -8,6 +8,15 @@ const { JWT_ADMIN_PASSWORD } = require("../jwt/config.js");
 const registerAdmin = async (req, res) => {
   const { firstName, lastName, email, password } = req.body;
 
+  // Check if all required fields are provided
+  if (!firstName || !lastName || !email || !password) {
+    return res.status(400).json({
+      message:
+        "Please enter all required details: firstName, lastName, email, and password",
+    });
+  }
+
+  //logic for zod to put input
   const requiredBody = z.object({
     firstName: z.string().min(3).max(100),
     lastName: z.string().min(3).max(100),
@@ -22,6 +31,7 @@ const registerAdmin = async (req, res) => {
       ),
   });
 
+  //check whether registeration is valid or not
   try {
     const parseDataWithSuccess = requiredBody.safeParse(req.body);
 
@@ -54,6 +64,14 @@ const registerAdmin = async (req, res) => {
 const loginAdmin = async (req, res) => {
   const { email, password } = req.body;
 
+  // Check if all required fields are provided
+  if (!email || !password) {
+    return res.status(400).json({
+      message: "Please enter all required details: email, and password",
+    });
+  }
+
+  //login logic for admin using JWT middleware
   try {
     const admin = await adminModel.findOne({ email });
 
@@ -66,11 +84,9 @@ const loginAdmin = async (req, res) => {
     const passwordMatch = await bcrypt.compare(password, admin.password);
 
     if (passwordMatch) {
-      const token = jwt.sign(
-        { id: admin._id },
-        JWT_ADMIN_PASSWORD,
-        { expiresIn: "1h" }
-      );
+      const token = jwt.sign({ id: admin._id }, JWT_ADMIN_PASSWORD, {
+        expiresIn: "1h",
+      });
 
       res.status(200).json({
         message: "Login successful",
@@ -89,29 +105,66 @@ const loginAdmin = async (req, res) => {
   }
 };
 
+//get assignments
 const getAssignments = async (req, res) => {
+  //logic for gives assignments under specific userId
   try {
     // Ensure that adminId exists in the request
     if (!req.adminId) {
       return res.status(400).json({ message: "Admin ID is required." });
     }
 
-    console.log("Admin ID:", req.adminId); // Verify that req.adminId is set
+    // console.log("Admin ID:", req.adminId); 
 
     // Fetch assignments associated with the admin
     const assignments = await assignmentModel
-      .find({ admin: req.adminId }) // Use req.adminId to get assignments associated with the admin
-      .populate("userId", "firstName lastName") // Populate userId with firstName and lastName
-      .lean(); // Use lean for plain JS objects
+      .find({ admin: req.adminId, status: "accepted" })
+      .populate({
+        path: "admin",
+        select: "firstName lastName email",
+      })
+      .populate({
+        path: "userId",
+        select: "firstName lastName",
+      })
+      .lean();
 
+    //if there is no assignment in arrays of objects
     if (assignments.length === 0) {
       console.log("No assignments found for the given admin.");
-      return res.status(404).json({ message: "No assignments found for the given admin." });
+      return res
+        .status(404)
+        .json({ message: "No assignments found for the given admin." });
     } else {
-      console.log("Assignments fetched:", assignments);
+      console.log("Assignments fetched successfully");
     }
 
-    res.status(200).json(assignments); // Send the assignments back in the response
+    // Function to format date in AM/PM format
+    const formatDate = (date) => {
+      const options = {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      };
+      const formattedDate = new Date(date).toLocaleString("en-US", options);
+      return formattedDate;
+    };
+    const transformedAssignments = assignments.map((assignment) => {
+      return {
+        userId: assignment.userId._id,
+        name: `${assignment.userId.firstName} ${assignment.userId.lastName}`,
+        admin: assignment.admin._id,
+        status: assignment.status,
+        task: assignment.task,
+        createdAt: formatDate(assignment.createdAt),
+      };
+    });
+
+    res.status(200).json({transformedAssignments});
   } catch (error) {
     console.error("Error fetching assignments:", error);
     res.status(500).json({
@@ -121,17 +174,15 @@ const getAssignments = async (req, res) => {
   }
 };
 
-
-
-
 // Accept assignment
 const acceptAssignment = async (req, res) => {
+  //check whether userId is valid or not
   try {
     const assignment = await assignmentModel.findById(req.params.id);
 
-    if (!assignment) {
-      return res.status(404).json({
-        message: "Assignment not found",
+    if (assignment.admin.toString() !== req.adminId) {
+      return res.status(403).json({
+        message: "You are not authorized to accept this assignment.",
       });
     }
 
@@ -152,14 +203,14 @@ const acceptAssignment = async (req, res) => {
 
 // Reject assignment
 const rejectAssignment = async (req, res) => {
+  //check whether userId is valid or not
   try {
-    console.log("Assignment ID from request params:", req.params.id); // Log the ID to console
-
+    
     const assignment = await assignmentModel.findById(req.params.id);
 
-    if (!assignment) {
-      return res.status(404).json({
-        message: "Assignment not found",
+    if (assignment.admin.toString() !== req.adminId) {
+      return res.status(403).json({
+        message: "You are not authorized to accept this assignment.",
       });
     }
 
@@ -177,7 +228,6 @@ const rejectAssignment = async (req, res) => {
     });
   }
 };
-
 
 module.exports = {
   registerAdmin,

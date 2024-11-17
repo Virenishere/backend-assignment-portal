@@ -16,11 +16,8 @@ function adminMiddleware(req, res, next) {
     try {
         // Verify the admin token
         const decoded = jwt.verify(token, JWT_ADMIN_PASSWORD);
-
-        // Attach admin information to the request object
         req.adminId = decoded.id;
-
-        next(); // Proceed to the next middleware or route
+        next(); 
     } catch (error) {
         return res.status(403).json({ message: "Invalid or expired admin token" });
     }
